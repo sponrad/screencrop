@@ -1,6 +1,10 @@
-# ScreenCrop
+<p align="center">
+  <img src="Resources/AppIcon.png" alt="ScreenCrop icon" width="160">
+</p>
 
-Use only the working part of a damaged MacBook screen.
+<h1 align="center">ScreenCrop</h1>
+
+<p align="center">Use only the working part of a damaged MacBook screen.</p>
 
 ScreenCrop creates a virtual display that is the size of the working area and
 makes it the main display. It streams that display, pixel for pixel, into the
@@ -11,11 +15,37 @@ ScreenCrop runs only while the built-in screen is the only display. When an
 external display connects, ScreenCrop pauses. When the external display
 disconnects, ScreenCrop starts again.
 
+## Install
+
+1. Download `ScreenCrop-vX.Y.Z.zip` from the
+   [latest release](https://github.com/sponrad/screencrop/releases/latest).
+2. Unzip it, and move `ScreenCrop.app` to `/Applications`.
+3. Open the app. The release has no Apple Developer ID signature, so macOS
+   blocks it the first time. Go to System Settings > Privacy & Security, and
+   click **Open Anyway** next to the ScreenCrop message. You can also clear
+   the download flag from a terminal:
+
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/ScreenCrop.app
+   ```
+
 ## Build and run
 
 ```bash
 ./build.sh
 open build/ScreenCrop.app
+```
+
+The build is a universal app for Apple silicon and Intel Macs.
+
+## Release
+
+Push a version tag. The `Release` workflow builds the app and attaches a zip
+to a new GitHub release.
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
 ```
 
 On the first run, grant Screen Recording permission in System Settings >
