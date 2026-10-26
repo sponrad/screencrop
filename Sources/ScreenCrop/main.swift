@@ -67,6 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         apply()
     }
 
+    @objc private func gatherWindows() {
+        crop.gatherWindows()
+    }
+
     @objc private func quit() {
         NSApp.terminate(nil)
     }
@@ -128,6 +132,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     action: #selector(toggle), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+        let gatherItem = NSMenuItem(title: "Gather Windows", action: #selector(gatherWindows), keyEquivalent: "")
+        gatherItem.target = self
+        gatherItem.isEnabled = crop.isOn
+        menu.addItem(gatherItem)
         menu.addItem(.separator())
 
         let frameRate = NSMenu()

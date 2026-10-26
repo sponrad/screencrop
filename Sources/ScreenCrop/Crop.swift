@@ -6,6 +6,7 @@ import ScreenCaptureKit
 enum CropError: LocalizedError {
     case noBuiltinDisplay
     case noScreenRecordingPermission
+    case noAccessibilityPermission
     case virtualDisplayFailed
     case virtualDisplayMissing
 
@@ -14,6 +15,8 @@ enum CropError: LocalizedError {
         case .noBuiltinDisplay: "The built-in display is not online."
         case .noScreenRecordingPermission:
             "ScreenCrop needs Screen Recording permission. Grant it in System Settings > Privacy & Security, then toggle again."
+        case .noAccessibilityPermission:
+            "ScreenCrop needs Accessibility permission to move windows. Grant it in System Settings > Privacy & Security, then toggle again."
         case .virtualDisplayFailed: "macOS did not create the virtual display."
         case .virtualDisplayMissing: "The virtual display did not appear in ScreenCaptureKit."
         }
@@ -116,6 +119,8 @@ final class Crop {
             CGRequestScreenCaptureAccess()
             throw CropError.noScreenRecordingPermission
         }
+        // Checked before the crop starts, so windows are never hidden without a way to move them.
+        guard WindowGather.isTrusted(prompt: true) else { throw CropError.noAccessibilityPermission }
         builtinID = builtin
 
         let display = try makeVirtualDisplay(builtin: builtin)
@@ -131,6 +136,20 @@ final class Crop {
         showOverlay()
         startFence()
         onChange?()
+        // Windows on the built-in screen would sit under the overlay; give the new layout a moment to settle first.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.gatherWindows()
+        }
+    }
+
+    /// Moves windows from the hidden built-in desktop onto the virtual display.
+    func gatherWindows() {
+        guard isOn, let virtual = virtualID else { return }
+        var target = CGDisplayBounds(virtual)
+        // Keeps windows below the menu bar.
+        target.origin.y += 40
+        target.size.height -= 40
+        WindowGather.move(from: CGDisplayBounds(builtinID), to: target)
     }
 
     /// Applies a new frame rate to a running capture without rebuilding the virtual display,

@@ -1,5 +1,6 @@
 #!/bin/bash
-# Builds a universal (arm64 + x86_64) build/ScreenCrop.app with an ad-hoc signature.
+# Builds a universal (arm64 + x86_64) build/ScreenCrop.app, signed with the "ScreenCrop Local Signing"
+# certificate when the keychain has it (see README), else with an ad-hoc signature.
 # Set VERSION (for example 0.2.0) to stamp the bundle version.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -26,5 +27,8 @@ if [[ -n "${VERSION:-}" ]]; then
     /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$app/Contents/Info.plist"
 fi
 
-codesign --force --sign - "$app"
+# A stable local identity keeps Screen Recording and Accessibility permissions across rebuilds.
+identity="ScreenCrop Local Signing"
+security find-certificate -c "$identity" >/dev/null 2>&1 || identity="-"
+codesign --force --sign "$identity" "$app"
 echo "Built $app"
