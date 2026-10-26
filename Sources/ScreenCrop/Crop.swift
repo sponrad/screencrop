@@ -98,6 +98,8 @@ final class Crop {
     private var frameLayer: CALayer?
     private var fence: Any?
     private var busy = false
+    /// Goes up on each teardown, so a start that a teardown interrupted can tell and stop.
+    private var generation = 0
     private var size = CropSize.fromDefaults()
     private(set) var frameRate = frameRateFromDefaults()
 
@@ -125,12 +127,18 @@ final class Crop {
 
         let display = try makeVirtualDisplay(builtin: builtin)
         virtualDisplay = display
+        let started = generation
         do {
             let scDisplay = try await waitForDisplay(display.displayID)
             try await startCapture(scDisplay)
         } catch {
             teardown()
             throw error
+        }
+        guard generation == started else {
+            NSLog("ScreenCrop: start interrupted by a display change")
+            teardown()
+            return
         }
         makeMain(display.displayID)
         showOverlay()
@@ -180,12 +188,17 @@ final class Crop {
     }
 
     private func teardown() {
+        generation += 1
         if let fence {
             NSEvent.removeMonitor(fence)
         }
         fence = nil
         window?.orderOut(nil)
         window = nil
+        for stale in NSApp.windows where stale.level == .screenSaver && stale.isVisible {
+            NSLog("ScreenCrop: removed a stale overlay at \(stale.frame)")
+            stale.orderOut(nil)
+        }
         frameLayer = nil
         stream?.stopCapture { _ in }
         stream = nil
