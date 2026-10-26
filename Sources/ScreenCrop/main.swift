@@ -42,6 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.apply()
             }
         }
+        // Lets scripts change settings with `defaults write` and then post this notification.
+        DistributedNotificationCenter.default().addObserver(
+            forName: Notification.Name("com.sponrad.ScreenCrop.reload"), object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.reloadFrameRate() }
+        }
 
         // `--for N` quits after N seconds, as a safe trial run.
         let args = CommandLine.arguments
@@ -63,6 +69,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quit() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func setFrameRate(_ sender: NSMenuItem) {
+        UserDefaults.standard.set(sender.tag, forKey: "fps")
+        reloadFrameRate()
+    }
+
+    private func reloadFrameRate() {
+        Task {
+            await crop.reloadFrameRate()
+            rebuildMenu()
+        }
     }
 
     private var externalConnected: Bool {
@@ -110,6 +128,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                     action: #selector(toggle), keyEquivalent: "")
         toggleItem.target = self
         menu.addItem(toggleItem)
+        menu.addItem(.separator())
+
+        let frameRate = NSMenu()
+        for fps in [60, 30] {
+            let item = NSMenuItem(title: "\(fps) fps", action: #selector(setFrameRate(_:)), keyEquivalent: "")
+            item.target = self
+            item.tag = fps
+            item.state = crop.frameRate == fps ? .on : .off
+            frameRate.addItem(item)
+        }
+        let frameRateItem = NSMenuItem(title: "Frame Rate", action: nil, keyEquivalent: "")
+        frameRateItem.submenu = frameRate
+        menu.addItem(frameRateItem)
+        menu.addItem(.separator())
+
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
         quitItem.target = self
         menu.addItem(quitItem)

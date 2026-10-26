@@ -51,6 +51,12 @@ struct CropSize {
     }
 }
 
+/// Capture frame rate. The virtual display itself always refreshes at 60 Hz.
+func frameRateFromDefaults() -> Int {
+    let fps = UserDefaults.standard.integer(forKey: "fps")
+    return fps > 0 ? min(fps, 60) : 60
+}
+
 /// Receives frames on a background queue and puts them on the overlay layer.
 final class FrameSink: NSObject, SCStreamOutput, SCStreamDelegate {
     weak var layer: CALayer?
@@ -87,9 +93,10 @@ final class Crop {
     private var sink: FrameSink?
     private var window: NSWindow?
     private var frameLayer: CALayer?
-    private var fence: Timer?
+    private var fence: Any?
     private var busy = false
     private var size = CropSize.fromDefaults()
+    private(set) var frameRate = frameRateFromDefaults()
 
     var onChange: (() -> Void)?
     var onError: ((Error) -> Void)?
@@ -103,6 +110,7 @@ final class Crop {
         defer { busy = false }
 
         size = CropSize.fromDefaults()
+        frameRate = frameRateFromDefaults()
         guard let builtin = builtinDisplayID() else { throw CropError.noBuiltinDisplay }
         guard CGPreflightScreenCaptureAccess() else {
             CGRequestScreenCaptureAccess()
@@ -125,6 +133,20 @@ final class Crop {
         onChange?()
     }
 
+    /// Applies a new frame rate to a running capture without rebuilding the virtual display,
+    /// so full-screen apps on it stay put.
+    func reloadFrameRate() async {
+        let next = frameRateFromDefaults()
+        guard next != frameRate else { return }
+        frameRate = next
+        guard let stream, !busy else { return }
+        do {
+            try await stream.updateConfiguration(streamConfiguration())
+        } catch {
+            onError?(error)
+        }
+    }
+
     func disable() {
         guard virtualDisplay != nil || isOn else { return }
         teardown()
@@ -139,7 +161,9 @@ final class Crop {
     }
 
     private func teardown() {
-        fence?.invalidate()
+        if let fence {
+            NSEvent.removeMonitor(fence)
+        }
         fence = nil
         window?.orderOut(nil)
         window = nil
@@ -171,6 +195,7 @@ final class Crop {
         let display = CGVirtualDisplay(descriptor: descriptor)
         let settings = CGVirtualDisplaySettings()
         settings.hiDPI = 1
+        // 60 Hz only: games such as Factorio tie their simulation to the refresh rate and run at half speed at 30 Hz.
         settings.modes = [
             CGVirtualDisplayMode(width: UInt(size.width * 2), height: UInt(size.height * 2), refreshRate: 60),
             CGVirtualDisplayMode(width: UInt(size.width), height: UInt(size.height), refreshRate: 60),
@@ -179,10 +204,10 @@ final class Crop {
         return display
     }
 
-    /// The new display shows up a moment after creation; pick its HiDPI mode once it is online.
+    /// The new display shows up a moment after creation; pick its mode once it is online.
     private func waitForDisplay(_ id: CGDirectDisplayID) async throws -> SCDisplay {
         for _ in 0..<40 {
-            if selectHiDPIMode(id) {
+            if selectMode(id) {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 if let display = content.displays.first(where: { $0.displayID == id }) {
                     return display
@@ -193,11 +218,12 @@ final class Crop {
         throw CropError.virtualDisplayMissing
     }
 
-    private func selectHiDPIMode(_ id: CGDirectDisplayID) -> Bool {
+    private func selectMode(_ id: CGDirectDisplayID) -> Bool {
         let options = [kCGDisplayShowDuplicateLowResolutionModes: kCFBooleanTrue] as CFDictionary
         guard let modes = CGDisplayCopyAllDisplayModes(id, options) as? [CGDisplayMode],
               let mode = modes.first(where: {
-                  $0.width == size.width && $0.height == size.height && $0.pixelWidth == size.width * 2
+                  $0.width == size.width && $0.height == size.height
+                      && $0.pixelWidth == size.width * 2
               })
         else { return false }
         if let current = CGDisplayCopyDisplayMode(id), current.width == mode.width,
@@ -207,15 +233,19 @@ final class Crop {
         return CGDisplaySetDisplayMode(id, mode, nil) == .success
     }
 
-    private func startCapture(_ display: SCDisplay) async throws {
+    private func streamConfiguration() -> SCStreamConfiguration {
         let config = SCStreamConfiguration()
         config.width = size.width * 2
         config.height = size.height * 2
-        config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
+        config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(frameRate))
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
-        config.queueDepth = 5
+        config.queueDepth = 3
+        return config
+    }
 
+    private func startCapture(_ display: SCDisplay) async throws {
+        let config = streamConfiguration()
         let sink = FrameSink { [weak self] error in
             NSLog("ScreenCrop: stream stopped: \(error)")
             self?.disable()
@@ -285,8 +315,9 @@ final class Crop {
     private func startFence() {
         let builtin = builtinID
         guard let virtual = virtualID else { return }
-        fence = Timer.scheduledTimer(withTimeInterval: 1.0 / 120, repeats: true) { _ in
-            guard let point = CGEvent(source: nil)?.location else { return }
+        let moves: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged]
+        fence = NSEvent.addGlobalMonitorForEvents(matching: moves) { event in
+            guard let point = event.cgEvent?.location else { return }
             let target = CGDisplayBounds(virtual)
             guard CGDisplayBounds(builtin).contains(point), !target.contains(point) else { return }
             let clamped = CGPoint(
