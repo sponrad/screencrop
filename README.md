@@ -62,6 +62,8 @@ open build/ScreenCrop.app --args --for 60
 
 - Press ⌃⌥⌘C to turn the crop on or off.
 - The ◧ menu bar item shows the state and has Quit.
+- The ◧ menu sets the capture frame rate, 60 or 30 fps. 30 fps saves a little
+  GPU work. The virtual display stays at 60 Hz, so games keep full speed.
 - If ScreenCrop quits or crashes, macOS removes the virtual display and the
   normal screen comes back.
 
@@ -88,8 +90,13 @@ defaults write com.sponrad.ScreenCrop height -int 982
 - ScreenCaptureKit captures that display. Each frame goes onto a layer in a
   borderless window on the built-in screen.
 - The virtual display sits at the origin, so it is the main display. The
-  built-in screen touches it only at a corner, and a timer moves the cursor
-  back if it reaches the built-in screen.
+  built-in screen touches it only at a corner, and a mouse event monitor moves
+  the cursor back if it reaches the built-in screen.
+
+While the crop runs, WindowServer uses about 3% more of one CPU core on an
+idle desktop and about 38% more during a full-screen game. See
+[benchmarks](docs/benchmarks.md) for the measurements, and
+[alternatives](docs/alternatives.md) for the other approaches that were tried.
 
 ## License
 
