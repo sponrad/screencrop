@@ -240,7 +240,7 @@ final class Crop {
         config.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(frameRate))
         config.pixelFormat = kCVPixelFormatType_32BGRA
         config.showsCursor = true
-        config.queueDepth = 3
+        config.queueDepth = 5
         return config
     }
 
