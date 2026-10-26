@@ -48,28 +48,48 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-On the first run, grant Screen Recording permission in System Settings >
-Privacy & Security > Screen & System Audio Recording. Then open the app again.
-The build has an ad-hoc signature, so macOS can ask again after a rebuild.
-
 For a safe trial, quit after a set number of seconds:
 
 ```bash
 open build/ScreenCrop.app --args --for 60
 ```
 
+## Permissions
+
+ScreenCrop needs two permissions. Grant both in System Settings > Privacy &
+Security:
+
+- **Screen & System Audio Recording**, to capture the virtual display.
+- **Accessibility**, to move windows into the visible area.
+
+If a permission is missing, the crop stays off. After you grant both, quit the
+app and open it again.
+
+### Keep permissions across rebuilds
+
+macOS ties the permissions to the app's signature. An ad-hoc signature changes
+on each build, so macOS asks again after each rebuild. A local signing
+certificate stops this. `build.sh` uses it when the keychain has it.
+
+1. Open Keychain Access.
+2. Select Keychain Access > Certificate Assistant > Create a Certificate.
+3. Set the name to `ScreenCrop Local Signing`.
+4. Set Identity Type to Self Signed Root.
+5. Set Certificate Type to Code Signing.
+6. Click Create.
+7. Run `./build.sh` again, and grant the permissions one more time.
+
 ## Use
 
 - Press ⌃⌥⌘C to turn the crop on or off.
 - The ◧ menu bar item shows the state and has Quit.
+- When the crop starts, ScreenCrop moves the windows on the built-in screen
+  into the visible area. Full-screen windows stay where they are. To move the
+  windows again, click Gather Windows in the ◧ menu.
 - The ◧ menu sets the capture frame rate, 60 or 30 fps. 30 fps saves a little
   GPU work. The virtual display stays at 60 Hz, so games keep full speed.
 - If ScreenCrop quits or crashes, macOS removes the virtual display and the
   normal screen comes back.
-
-Windows that were open on the built-in screen stay there, under the black
-overlay. To move a window to the virtual display, use a window manager such as
-Rectangle (⌃⌥⌘← for "Previous Display").
 
 ## Settings
 
@@ -92,6 +112,8 @@ defaults write com.sponrad.ScreenCrop height -int 982
 - The virtual display sits at the origin, so it is the main display. The
   built-in screen touches it only at a corner, and a mouse event monitor moves
   the cursor back if it reaches the built-in screen.
+- The Accessibility API moves other apps' windows from the built-in screen to
+  the virtual display.
 
 While the crop runs, WindowServer uses about 3% more of one CPU core on an
 idle desktop and about 38% more during a full-screen game. See
